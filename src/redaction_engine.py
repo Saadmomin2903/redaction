@@ -420,26 +420,37 @@ class RedactionEngine:
                 for suggestion in suggestions:
                     text_to_redact = suggestion['text']
                     
-                    # Search for text instances
-                    instances = page.search_for(text_to_redact)
+                    # Method 1: Exact text search
+                    instances = page.search_for(text_to_redact, quads=True)
                     
-                    # Apply redaction to each instance
-                    for inst in instances:
-                        # Add some padding around the text
+                    # Method 2: Regular expression search for partial matches
+                    text_instances = page.get_text("words")
+                    for inst in text_instances:
+                        if text_to_redact in inst[4]:  # inst[4] contains the text
+                            # Create rectangle from word coordinates
+                            rect = fitz.Rect(inst[:4])
+                            
+                            # Add redaction annotation
+                            annot = page.add_redact_annot(rect)
+                            annot.set_colors(stroke=(0, 0, 0), fill=(0, 0, 0))
+                            annot.update()
+                    
+                    # Apply exact match redactions
+                    for quad in instances:
+                        rect = quad.rect  # Convert quad to rectangle
+                        # Add some padding
                         padding = 2
-                        rect = fitz.Rect(
-                            inst.x0 - padding,
-                            inst.y0 - padding,
-                            inst.x1 + padding,
-                            inst.y1 + padding
-                        )
+                        rect.x0 -= padding
+                        rect.y0 -= padding
+                        rect.x1 += padding
+                        rect.y1 += padding
                         
                         # Create and apply redaction
                         annot = page.add_redact_annot(rect)
                         annot.set_colors(stroke=(0, 0, 0), fill=(0, 0, 0))
                         annot.update()
                 
-                # Apply redactions to the page
+                # Apply all redactions to the page
                 page.apply_redactions()
             
             # Save redacted document with encryption
@@ -453,6 +464,10 @@ class RedactionEngine:
                            fitz.PDF_PERM_COPY
             )
             doc.close()
+            
+            # Verify redactions
+            if not self._verify_redaction(output_path, suggestions):
+                raise RuntimeError("Redaction verification failed")
             
             return output_path
             
@@ -468,15 +483,25 @@ class RedactionEngine:
             
             for page_num in range(len(doc)):
                 page = doc[page_num]
+                
+                # Get text in different formats for thorough verification
                 text = page.get_text()
+                words = page.get_text("words")
                 
                 # Check each suggestion
                 for suggestion in suggestions:
                     text_to_redact = suggestion['text']
+                    
+                    # Check full text
                     if text_to_redact in text:
-                        # Found unredacted text
                         doc.close()
                         return False
+                    
+                    # Check individual words
+                    for word in words:
+                        if text_to_redact in word[4]:  # word[4] contains the text
+                            doc.close()
+                            return False
             
             doc.close()
             return True

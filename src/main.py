@@ -20,6 +20,14 @@ class MultiDocRedactionApp:
         # Initialize session state if it doesn't exist
         if 'custom_redactions' not in st.session_state:
             st.session_state.custom_redactions = []
+        if 'contextual_matches' not in st.session_state:
+            st.session_state.contextual_matches = []
+        if 'document_text' not in st.session_state:
+            st.session_state.document_text = ""
+        if 'text_to_redact' not in st.session_state:
+            st.session_state.text_to_redact = ""
+        if 'reason' not in st.session_state:
+            st.session_state.reason = ""
         
         self.ai_suggester = AIRedactionSuggester()
         self.redaction_engine = RedactionEngine()
@@ -87,50 +95,61 @@ class MultiDocRedactionApp:
                 st.write(f"Current redactions count before processing: {len(st.session_state.custom_redactions)}")
                 
                 if submit_button and text_to_redact:
-                    with st.spinner("Analyzing document..."):
-                        # Get AI suggestions
-                        ai_suggestions = self.ai_suggester.analyze_text_for_redaction(
+                    with st.spinner("Analyzing document for contextual matches..."):
+                        # Store matches in session state
+                        st.session_state.contextual_matches = self.ai_suggester.analyze_contextual_meaning(
                             document_text,
                             text_to_redact,
                             redaction_type
                         )
-                        
-                        if ai_suggestions:
-                            # Show preview of what will be redacted
-                            st.subheader("Preview of Items to be Redacted:")
-                            for idx, sugg in enumerate(ai_suggestions, 1):
-                                st.write(f"{idx}. {sugg['text']} ({sugg['reason']})")
+                        st.session_state.current_text = text_to_redact
+                        st.session_state.current_type = redaction_type
+                        st.session_state.current_reason = reason
+
+                # Display contextual matches (move this outside the if block)
+                if hasattr(st.session_state, 'contextual_matches') and st.session_state.contextual_matches:
+                    st.subheader("Contextual Matches Found:")
+                    for idx, match in enumerate(st.session_state.contextual_matches):
+                        with st.expander(f"Match #{idx + 1}: {match['text']}"):
+                            st.markdown(f"""
+                            - **Found Text:** `{match['text']}`
+                            - **Confidence:** {match['confidence']}%
+                            - **Reason:** {match['reason']}
+                            """)
                             
-                            # Confirm redaction
-                            if st.button("Confirm Redactions"):
-                                st.session_state.custom_redactions.extend(ai_suggestions)
-                                st.success(f"Added {len(ai_suggestions)} redactions!")
-                        else:
-                            # Handle manual redaction
-                            new_redaction = {
-                                "type": redaction_type,
-                                "text": text_to_redact,
-                                "confidence": 100,
-                                "reason": reason or "User-specified redaction",
-                                "page": 0,
-                                "bbox": [50, 50, 550, 70]
-                            }
-                            st.session_state.custom_redactions.append(new_redaction)
-                            st.warning("Added exact text match only.")
-                
+                            # Create unique key for each button
+                            button_key = f"add_match_{idx}_{hash(match['text'])}"
+                            
+                            if st.button("Add this match", key=button_key):
+                                new_redaction = {
+                                    'text': match['text'],
+                                    'type': st.session_state.current_type,
+                                    'confidence': match['confidence'],
+                                    'reason': st.session_state.current_reason if st.session_state.current_reason else match['reason']
+                                }
+                                
+                                if 'custom_redactions' not in st.session_state:
+                                    st.session_state.custom_redactions = []
+                                
+                                # Check if this exact redaction is already in the list
+                                if new_redaction not in st.session_state.custom_redactions:
+                                    st.session_state.custom_redactions.append(new_redaction)
+                                    st.success(f"Added redaction for: {match['text']}")
+
                 # Display current redactions
                 if st.session_state.custom_redactions:
                     st.subheader("Current Redactions")
-                    for i, redaction in enumerate(st.session_state.custom_redactions):
-                        with st.expander(f"Redaction #{i+1}"):
+                    for idx, redaction in enumerate(st.session_state.custom_redactions):
+                        with st.expander(f"Redaction #{idx + 1}: {redaction['text']}"):
                             st.markdown(f"""
-                            - **Text to Redact:** `{redaction['text']}`
+                            - **Text:** `{redaction['text']}`
                             - **Type:** {redaction['type']}
+                            - **Confidence:** {redaction['confidence']}%
                             - **Reason:** {redaction['reason']}
                             """)
                             
-                            if st.button("Remove", key=f"remove_{i}"):
-                                st.session_state.custom_redactions.pop(i)
+                            if st.button("Remove", key=f"remove_{idx}"):
+                                st.session_state.custom_redactions.pop(idx)
                                 st.rerun()
                 
                 # Process redactions
