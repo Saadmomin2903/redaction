@@ -12,7 +12,7 @@ load_dotenv()
 
 class AIRedactionSuggester:
     def __init__(self):
-        api_key = os.getenv("GOOGLE_GEMINI_API_KEY")
+        api_key = st.secrets["GOOGLE_GEMINI_API_KEY"]
         if not api_key:
             raise ValueError("GOOGLE_GEMINI_API_KEY environment variable not found")
         
