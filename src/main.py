@@ -93,7 +93,7 @@ He frequently shops online and uses PayPal with the email paypal.john.doe@exampl
             for line in sample_text.split('\n'):
                 pdf.cell(0, 10, txt=line, ln=True)
             
-            pdf_bytes = pdf.output(dest='S').encode('latin-1')
+            pdf_bytes = pdf.output(dest='S')
             
             st.download_button(
                 label="📕 Download PDF Sample",
