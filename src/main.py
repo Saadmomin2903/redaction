@@ -11,12 +11,7 @@ import docx
 import io
 from fpdf import FPDF
 
-# Must be the first Streamlit command
-st.set_page_config(
-    page_title="MultiDoc Redaction Assistant",
-    page_icon="📄",
-    layout="wide"
-)
+
 
 class MultiDocRedactionApp:
     def __init__(self):

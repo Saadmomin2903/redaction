@@ -516,54 +516,34 @@ class RedactionEngine:
             doc = docx.Document(file_path)
             ai_suggester = AIRedactionSuggester()
             
-            # Extract full text for AI analysis
-            full_text = "\n".join([paragraph.text for paragraph in doc.paragraphs])
-            
-            # Process each suggestion with AI
+            # Process each suggestion
             for suggestion in suggestions:
                 text_to_redact = suggestion['text']
-                semantic_matches = ai_suggester.analyze_text_for_redaction(
-                    full_text,
-                    text_to_redact,
-                    suggestion['type']
-                )
                 
-                # Apply redactions to document
+                # Process each paragraph
                 for paragraph in doc.paragraphs:
-                    for match in semantic_matches:
-                        matched_text = match['text']
-                        if matched_text in paragraph.text:
-                            # Split runs at match boundaries
-                            new_runs = []
-                            for run in paragraph.runs:
-                                if matched_text in run.text:
-                                    parts = run.text.split(matched_text)
-                                    for i, part in enumerate(parts):
-                                        if part:
-                                            new_run = paragraph.add_run(part)
-                                            new_run.font.name = run.font.name
-                                            new_run.font.size = run.font.size
-                                            new_runs.append(new_run)
-                                        if i < len(parts) - 1:
-                                            # Add redaction
-                                            redact_run = paragraph.add_run('█' * len(matched_text))
-                                            redact_run.font.name = run.font.name
-                                            redact_run.font.size = run.font.size
-                                            new_runs.append(redact_run)
-                                else:
-                                    new_runs.append(run)
-                            
-                            # Replace original runs with new ones
-                            paragraph._p.remove(*paragraph._p.r_lst)
-                            for run in new_runs:
-                                paragraph._p.append(run._r)
+                    if text_to_redact in paragraph.text:
+                        # Store original text and create redacted version
+                        text = paragraph.text
+                        redacted_text = text.replace(text_to_redact, '█' * len(text_to_redact))
+                        
+                        # Clear existing runs
+                        for run in paragraph.runs:
+                            run.text = ""
+                        
+                        # Add new run with redacted text
+                        new_run = paragraph.add_run(redacted_text)
+                        new_run.font.name = 'Calibri'
+                        new_run.font.size = docx.shared.Pt(11)
+                        new_run.font.bold = True
+                        new_run.font.color.rgb = docx.shared.RGBColor(0, 0, 0)
             
             # Save redacted document
             doc.save(output_path)
             return output_path
             
         except Exception as e:
-            raise RuntimeError(f"DOCX redaction failed: {e}")
+            raise RuntimeError(f"DOCX redaction failed: {str(e)}")
 
     def _redact_text(self, file_path: str, suggestions: List[Dict], output_path: str) -> str:
         try:
