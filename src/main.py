@@ -7,6 +7,9 @@ from src.redaction_engine import RedactionEngine
 from src.ai_suggestions import AIRedactionSuggester
 from src.report_generator import RedactionReportGenerator
 from src.security_utils import SecurityManager
+import docx
+import io
+from fpdf import FPDF
 
 # Must be the first Streamlit command
 st.set_page_config(
@@ -28,6 +31,10 @@ class MultiDocRedactionApp:
             st.session_state.text_to_redact = ""
         if 'reason' not in st.session_state:
             st.session_state.reason = ""
+        if 'ai_suggestions' not in st.session_state:
+            st.session_state.ai_suggestions = []
+        if 'has_generated_suggestions' not in st.session_state:
+            st.session_state.has_generated_suggestions = False
         
         self.ai_suggester = AIRedactionSuggester()
         self.redaction_engine = RedactionEngine()
@@ -35,8 +42,75 @@ class MultiDocRedactionApp:
         self.security_manager = SecurityManager()
         self.file_handler = FileHandler()
 
+    def show_sample_files(self):
+        st.subheader("Sample Test Files")
+        st.markdown("""
+        Download these sample files to test the redaction capabilities:
+        
+        Each file contains the same content with various types of sensitive information:
+        - Personal Information (names, addresses, emails, phone numbers, SSN)
+        - Financial Information (credit card numbers)
+        - Work-related Information
+        """)
+
+        sample_text = """John Doe lives at 123 Elm Street, Springfield.
+His email address is john.doe@example.com, and his phone number is +1-555-123-4567.
+Credit Card Number: 4111 1111 1111 1111. Social Security Number: 123-45-6789.
+
+For work-related matters, contact him at work.email@example.com or at (555) 987-6543.
+He frequently shops online and uses PayPal with the email paypal.john.doe@example.com."""
+
+        # Create download buttons for each format
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.download_button(
+                label="📄 Download TXT Sample",
+                data=sample_text,
+                file_name="sample_document.txt",
+                mime="text/plain"
+            )
+        
+        with col2:
+            # Create a simple DOCX in memory
+            doc = docx.Document()
+            doc.add_heading('Sample Document', 0)
+            for paragraph in sample_text.split('\n'):
+                doc.add_paragraph(paragraph)
+            
+            # Save to bytes
+            docx_bytes = io.BytesIO()
+            doc.save(docx_bytes)
+            docx_bytes.seek(0)
+            
+            st.download_button(
+                label="📘 Download DOCX Sample",
+                data=docx_bytes,
+                file_name="sample_document.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            )
+        
+        with col3:
+            # Create PDF in memory
+            pdf = FPDF()
+            pdf.add_page()
+            pdf.set_font("Arial", size=12)
+            for line in sample_text.split('\n'):
+                pdf.cell(0, 10, txt=line, ln=True)
+            
+            pdf_bytes = pdf.output(dest='S').encode('latin-1')
+            
+            st.download_button(
+                label="📕 Download PDF Sample",
+                data=pdf_bytes,
+                file_name="sample_document.pdf",
+                mime="application/pdf"
+            )
+
     def run(self):
         st.title("MultiDoc Redaction Assistant")
+        
+        self.show_sample_files()
         
         uploaded_file = st.file_uploader(
             "Upload a document",
@@ -56,17 +130,20 @@ class MultiDocRedactionApp:
                 st.subheader("Document Preview")
                 st.text(document_text)
                 
-                # Get AI suggestions first
-                with st.spinner("Analyzing document for sensitive information..."):
-                    ai_suggestions = self.ai_suggester.get_redaction_suggestions(
-                        temp_file_path,
-                        sensitivity=50  # Default sensitivity threshold
-                    )
+                # Add AI suggestion button
+                if st.button("Get AI Suggestions"):
+                    with st.spinner("Analyzing document for sensitive information..."):
+                        st.session_state.ai_suggestions = self.ai_suggester.get_redaction_suggestions(
+                            temp_file_path,
+                            sensitivity=50
+                        )
+                        st.session_state.has_generated_suggestions = True
+                        st.rerun()
                 
-                # Display AI suggestions
-                if ai_suggestions:
+                # Display AI suggestions (move outside the button click condition)
+                if st.session_state.has_generated_suggestions and st.session_state.ai_suggestions:
                     st.subheader("AI-Suggested Redactions")
-                    for i, suggestion in enumerate(ai_suggestions):
+                    for i, suggestion in enumerate(st.session_state.ai_suggestions):
                         with st.expander(f"Suggestion #{i+1}: {suggestion['type']}"):
                             st.markdown(f"""
                             - **Text to Redact:** `{suggestion['text']}`
@@ -75,10 +152,13 @@ class MultiDocRedactionApp:
                             - **Reason:** {suggestion['reason']}
                             """)
                             if st.button("Accept Suggestion", key=f"accept_{i}"):
-                                if 'custom_redactions' not in st.session_state:
-                                    st.session_state.custom_redactions = []
-                                st.session_state.custom_redactions.append(suggestion)
-                                st.success("Suggestion added to redaction list!")
+                                if suggestion['text'] not in [r['text'] for r in st.session_state.custom_redactions]:
+                                    st.session_state.custom_redactions.append(suggestion)
+                                    st.success("Suggestion added to redaction list!")
+                                else:
+                                    st.warning("This text is already in the redaction list!")
+                elif st.session_state.has_generated_suggestions:
+                    st.info("No sensitive information detected by AI.")
                 
                 # Redaction interface
                 st.subheader("Custom Redaction")
