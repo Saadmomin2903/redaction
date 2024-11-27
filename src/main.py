@@ -93,11 +93,14 @@ He frequently shops online and uses PayPal with the email paypal.john.doe@exampl
             for line in sample_text.split('\n'):
                 pdf.cell(0, 10, txt=line, ln=True)
             
-            pdf_bytes = pdf.output(dest='S')
+            # Use io.BytesIO to create a proper byte stream
+            pdf_bytes_io = io.BytesIO()
+            pdf.output(pdf_bytes_io)
+            pdf_bytes_io.seek(0)
             
             st.download_button(
                 label="📕 Download PDF Sample",
-                data=pdf_bytes,
+                data=pdf_bytes_io,
                 file_name="sample_document.pdf",
                 mime="application/pdf"
             )
